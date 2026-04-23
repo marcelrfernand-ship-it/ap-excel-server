@@ -131,7 +131,61 @@ def gerar_excel():
             sc(ws, f'I{base+25}', '★' * vi.get('score', 0) if vi.get('score') else '')
             sc(ws, f'C{base+28}', vi.get('obsInternas'))
 
-        # Salvar em memória e retornar
+        # ── SEMANAL ──
+        if '📊 Semanal' in wb.sheetnames:
+            ws = wb['📊 Semanal']
+            semanal_data = d.get('semanal', [])
+            if isinstance(semanal_data, dict):
+                semanal_data = [semanal_data]
+            if isinstance(semanal_data, list) and len(semanal_data) > 0:
+                last = semanal_data[-1]
+                sc(ws, 'B7', last.get('num'))
+                sc(ws, 'C7', last.get('periodo'))
+                sc(ws, 'E7', h.get('kam'))
+                sc(ws, 'B12', last.get('fatos'))
+                sc(ws, 'B17', last.get('pipeline'))
+                sc(ws, 'F17', last.get('quente'))
+                sc(ws, 'B20', last.get('prox'))
+                sc(ws, 'F20', last.get('suporte'))
+                sc(ws, 'B24', last.get('perdas'))
+                sc(ws, 'F24', last.get('conquista'))
+                sc(ws, 'B39', last.get('meta'))
+                sc(ws, 'D39', last.get('realizado'))
+                for i, sem in enumerate(semanal_data[-5:]):
+                    row = 30 + i
+                    sc(ws, f'B{row}', sem.get('num'))
+                    sc(ws, f'E{row}', sem.get('pipeline'))
+                    sc(ws, f'G{row}', sem.get('quente'))
+                    sc(ws, f'I{row}', sem.get('prox'))
+
+        # ── SEMANAL ──
+        if '📊 Semanal' in wb.sheetnames:
+            ws = wb['📊 Semanal']
+            semanal_data = d.get('semanal', [])
+            if isinstance(semanal_data, dict):
+                semanal_data = [semanal_data]
+            if isinstance(semanal_data, list) and len(semanal_data) > 0:
+                last = semanal_data[-1]
+                sc(ws, 'B7', last.get('num'))
+                sc(ws, 'C7', last.get('periodo'))
+                sc(ws, 'E7', h.get('kam'))
+                sc(ws, 'B12', last.get('fatos'))
+                sc(ws, 'B17', last.get('pipeline'))
+                sc(ws, 'F17', last.get('quente'))
+                sc(ws, 'B20', last.get('prox'))
+                sc(ws, 'F20', last.get('suporte'))
+                sc(ws, 'B24', last.get('perdas'))
+                sc(ws, 'F24', last.get('conquista'))
+                sc(ws, 'B39', last.get('meta'))
+                sc(ws, 'D39', last.get('realizado'))
+                for i, sem in enumerate(semanal_data[-5:]):
+                    row = 30 + i
+                    sc(ws, f'B{{row}}', sem.get('num'))
+                    sc(ws, f'E{{row}}', sem.get('pipeline'))
+                    sc(ws, f'G{{row}}', sem.get('quente'))
+                    sc(ws, f'I{{row}}', sem.get('prox'))
+
+                # Salvar em memória e retornar
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
