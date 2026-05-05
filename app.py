@@ -202,6 +202,59 @@ def gerar_excel():
 
     except Exception as e:
         return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
+# ══ ASANA INTEGRATION ══
+import requests as req_asana
 
+ASANA_TOKEN = os.environ.get('ASANA_TOKEN', '')
+ASANA_WORKSPACE = '1202781323743076'
+ASANA_BASE = 'https://app.asana.com/api/1.0'
+ASANA_HEADERS = {'Authorization': f'Bearer {ASANA_TOKEN}', 'Content-Type': 'application/json'}
+EMAIL_GID_CACHE = {}
+
+def get_user_gid(email):
+    if email in EMAIL_GID_CACHE: return EMAIL_GID_CACHE[email]
+    try:
+        r = req_asana.get(f'{ASANA_BASE}/workspaces/{ASANA_WORKSPACE}/typeahead',
+            params={'resource_type':'user','query':email}, headers=ASANA_HEADERS)
+        data = r.json().get('data',[])
+        if data: EMAIL_GID_CACHE[email] = data[0]['gid']; return data[0]['gid']
+    except: pass
+    return None
+
+@app.route('/criar-projeto-asana', methods=['POST','OPTIONS'])
+def criar_projeto_asana():
+    if request.method == 'OPTIONS':
+        res = jsonify({'ok':True})
+        res.headers.add('Access-Control-Allow-Origin','*')
+        res.headers.add('Access-Control-Allow-Headers','Content-Type')
+        res.headers.add('Access-Control-Allow-Methods','POST')
+        return res
+    try:
+        d = request.json
+        nome = f"[AP-WDC] {d.get('cliente','?')} — {d.get('descricao','?')}"
+        notes = f"Origem: Account Planning WDC\nKAM: {d.get('kam')}\nCliente: {d.get('cliente')}\nDescrição: {d.get('descricao')}\nFabricante: {d.get('fabricante')}\nTecnologia: {d.get('tecnologia')}\nValor: R$ {d.get('valor')}\nProbabilidade: {d.get('prob')}\nFase: {d.get('fase')}"
+        pr = req_asana.post(f'{ASANA_BASE}/projects',
+            json={'data':{'name':nome,'workspace':ASANA_WORKSPACE,'notes':notes,'default_view':'list'}},
+            headers=ASANA_HEADERS)
+        if not pr.ok: raise Exception(pr.text)
+        gid = pr.json()['data']['gid']
+        url = f'https://app.asana.com/0/{gid}'
+        membros = []
+        for email in d.get('emails',[]):
+            ugid = get_user_gid(email)
+            if ugid:
+                req_asana.post(f'{ASANA_BASE}/projects/{gid}/addMembers',
+                    json={'data':{'members':[ugid]}}, headers=ASANA_HEADERS)
+                membros.append(email)
+        req_asana.post(f'{ASANA_BASE}/tasks',
+            json={'data':{'name':f'📋 Briefing — {d.get("cliente")}','projects':[gid],'notes':notes,'workspace':ASANA_WORKSPACE}},
+            headers=ASANA_HEADERS)
+        res = jsonify({'success':True,'projeto_gid':gid,'projeto_url':url,'membros':membros})
+        res.headers.add('Access-Control-Allow-Origin','*')
+        return res
+    except Exception as e:
+        res = jsonify({'error':str(e)})
+        res.headers.add('Access-Control-Allow-Origin','*')
+        return res, 500
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
