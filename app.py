@@ -1,15 +1,22 @@
+import os
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 import base64, io, json, traceback
+import requests as req_asana
 from template_b64 import TEMPLATE_B64
 
 app = Flask(__name__)
 CORS(app)
 
+ASANA_TOKEN = os.environ.get('ASANA_TOKEN', '')
+ASANA_WORKSPACE = '1202781323743076'
+ASANA_BASE = 'https://app.asana.com/api/1.0'
+ASANA_HEADERS = {'Authorization': f'Bearer {ASANA_TOKEN}', 'Content-Type': 'application/json'}
+EMAIL_GID_CACHE = {}
+
 def sc(ws, addr, val):
-    """Setar valor em célula preservando formatação original."""
     if val is None or val == '': return
     if addr not in ws: ws[addr] = None
     cell = ws[addr]
@@ -18,9 +25,26 @@ def sc(ws, addr, val):
     else:
         cell.value = str(val)
 
+def get_user_gid(email):
+    if email in EMAIL_GID_CACHE: return EMAIL_GID_CACHE[email]
+    try:
+        r = req_asana.get(f'{ASANA_BASE}/workspaces/{ASANA_WORKSPACE}/typeahead',
+            params={'resource_type':'user','query':email}, headers=ASANA_HEADERS)
+        data = r.json().get('data',[])
+        if data:
+            EMAIL_GID_CACHE[email] = data[0]['gid']
+            return data[0]['gid']
+    except:
+        pass
+    return None
+
 @app.route('/', methods=['GET'])
-def health():
+def index():
     return jsonify({'status': 'ok', 'service': 'AP Excel Generator'})
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'ok', 'service': 'AP-WDC Server'})
 
 @app.route('/gerar-excel', methods=['POST'])
 def gerar_excel():
@@ -29,7 +53,6 @@ def gerar_excel():
         h = d.get('header', {})
         p = d.get('perfil', {})
 
-        # Carregar template
         template_bytes = base64.b64decode(TEMPLATE_B64)
         wb = load_workbook(io.BytesIO(template_bytes))
 
@@ -158,34 +181,6 @@ def gerar_excel():
                     sc(ws, f'G{row}', sem.get('quente'))
                     sc(ws, f'I{row}', sem.get('prox'))
 
-        # ── SEMANAL ──
-        if '📊 Semanal' in wb.sheetnames:
-            ws = wb['📊 Semanal']
-            semanal_data = d.get('semanal', [])
-            if isinstance(semanal_data, dict):
-                semanal_data = [semanal_data]
-            if isinstance(semanal_data, list) and len(semanal_data) > 0:
-                last = semanal_data[-1]
-                sc(ws, 'B7', last.get('num'))
-                sc(ws, 'C7', last.get('periodo'))
-                sc(ws, 'E7', h.get('kam'))
-                sc(ws, 'B12', last.get('fatos'))
-                sc(ws, 'B17', last.get('pipeline'))
-                sc(ws, 'F17', last.get('quente'))
-                sc(ws, 'B20', last.get('prox'))
-                sc(ws, 'F20', last.get('suporte'))
-                sc(ws, 'B24', last.get('perdas'))
-                sc(ws, 'F24', last.get('conquista'))
-                sc(ws, 'B39', last.get('meta'))
-                sc(ws, 'D39', last.get('realizado'))
-                for i, sem in enumerate(semanal_data[-5:]):
-                    row = 30 + i
-                    sc(ws, f'B{{row}}', sem.get('num'))
-                    sc(ws, f'E{{row}}', sem.get('pipeline'))
-                    sc(ws, f'G{{row}}', sem.get('quente'))
-                    sc(ws, f'I{{row}}', sem.get('prox'))
-
-                # Salvar em memória e retornar
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
@@ -202,62 +197,73 @@ def gerar_excel():
 
     except Exception as e:
         return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
-# ══ ASANA INTEGRATION ══
-import requests as req_asana
 
-ASANA_TOKEN = os.environ.get('ASANA_TOKEN', '')
-ASANA_WORKSPACE = '1202781323743076'
-ASANA_BASE = 'https://app.asana.com/api/1.0'
-ASANA_HEADERS = {'Authorization': f'Bearer {ASANA_TOKEN}', 'Content-Type': 'application/json'}
-EMAIL_GID_CACHE = {}
 
-def get_user_gid(email):
-    if email in EMAIL_GID_CACHE: return EMAIL_GID_CACHE[email]
-    try:
-        r = req_asana.get(f'{ASANA_BASE}/workspaces/{ASANA_WORKSPACE}/typeahead',
-            params={'resource_type':'user','query':email}, headers=ASANA_HEADERS)
-        data = r.json().get('data',[])
-        if data: EMAIL_GID_CACHE[email] = data[0]['gid']; return data[0]['gid']
-    except: pass
-    return None
-
-@app.route('/criar-projeto-asana', methods=['POST','OPTIONS'])
+@app.route('/criar-projeto-asana', methods=['POST', 'OPTIONS'])
 def criar_projeto_asana():
     if request.method == 'OPTIONS':
-        res = jsonify({'ok':True})
-        res.headers.add('Access-Control-Allow-Origin','*')
-        res.headers.add('Access-Control-Allow-Headers','Content-Type')
-        res.headers.add('Access-Control-Allow-Methods','POST')
+        res = jsonify({'ok': True})
+        res.headers.add('Access-Control-Allow-Origin', '*')
+        res.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        res.headers.add('Access-Control-Allow-Methods', 'POST')
         return res
     try:
         d = request.json
         nome = f"[AP-WDC] {d.get('cliente','?')} — {d.get('descricao','?')}"
-        notes = f"Origem: Account Planning WDC\nKAM: {d.get('kam')}\nCliente: {d.get('cliente')}\nDescrição: {d.get('descricao')}\nFabricante: {d.get('fabricante')}\nTecnologia: {d.get('tecnologia')}\nValor: R$ {d.get('valor')}\nProbabilidade: {d.get('prob')}\nFase: {d.get('fase')}"
-        pr = req_asana.post(f'{ASANA_BASE}/projects',
-            json={'data':{'name':nome,'workspace':ASANA_WORKSPACE,'notes':notes,'default_view':'list'}},
-            headers=ASANA_HEADERS)
-        if not pr.ok: raise Exception(pr.text)
+        notes = (
+            f"Origem: Account Planning WDC\n"
+            f"KAM: {d.get('kam')}\n"
+            f"Cliente: {d.get('cliente')}\n"
+            f"Descrição: {d.get('descricao')}\n"
+            f"Fabricante: {d.get('fabricante')}\n"
+            f"Tecnologia: {d.get('tecnologia')}\n"
+            f"Valor: R$ {d.get('valor')}\n"
+            f"Probabilidade: {d.get('prob')}\n"
+            f"Fase: {d.get('fase')}"
+        )
+
+        pr = req_asana.post(
+            f'{ASANA_BASE}/projects',
+            json={'data': {'name': nome, 'workspace': ASANA_WORKSPACE, 'notes': notes, 'default_view': 'list'}},
+            headers=ASANA_HEADERS
+        )
+        if not pr.ok:
+            raise Exception(pr.text)
+
         gid = pr.json()['data']['gid']
         url = f'https://app.asana.com/0/{gid}'
+
         membros = []
-        for email in d.get('emails',[]):
+        for email in d.get('emails', []):
             ugid = get_user_gid(email)
             if ugid:
-                req_asana.post(f'{ASANA_BASE}/projects/{gid}/addMembers',
-                    json={'data':{'members':[ugid]}}, headers=ASANA_HEADERS)
+                req_asana.post(
+                    f'{ASANA_BASE}/projects/{gid}/addMembers',
+                    json={'data': {'members': [ugid]}},
+                    headers=ASANA_HEADERS
+                )
                 membros.append(email)
-        req_asana.post(f'{ASANA_BASE}/tasks',
-            json={'data':{'name':f'📋 Briefing — {d.get("cliente")}','projects':[gid],'notes':notes,'workspace':ASANA_WORKSPACE}},
-            headers=ASANA_HEADERS)
-        res = jsonify({'success':True,'projeto_gid':gid,'projeto_url':url,'membros':membros})
-        res.headers.add('Access-Control-Allow-Origin','*')
+
+        req_asana.post(
+            f'{ASANA_BASE}/tasks',
+            json={'data': {
+                'name': f'📋 Briefing — {d.get("cliente")}',
+                'projects': [gid],
+                'notes': notes,
+                'workspace': ASANA_WORKSPACE
+            }},
+            headers=ASANA_HEADERS
+        )
+
+        res = jsonify({'success': True, 'projeto_gid': gid, 'projeto_url': url, 'membros': membros})
+        res.headers.add('Access-Control-Allow-Origin', '*')
         return res
+
     except Exception as e:
-        res = jsonify({'error':str(e)})
-        res.headers.add('Access-Control-Allow-Origin','*')
+        res = jsonify({'error': str(e)})
+        res.headers.add('Access-Control-Allow-Origin', '*')
         return res, 500
-        @app.route('/health', methods=['GET'])
-def health():
-    return jsonify({'status': 'ok', 'service': 'AP-WDC Asana Integration'})
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
