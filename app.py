@@ -256,5 +256,8 @@ def criar_projeto_asana():
         res = jsonify({'error':str(e)})
         res.headers.add('Access-Control-Allow-Origin','*')
         return res, 500
+        @app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'ok', 'service': 'AP-WDC Asana Integration'})
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
