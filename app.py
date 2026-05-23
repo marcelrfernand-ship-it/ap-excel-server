@@ -15,7 +15,6 @@ ASANA_WORKSPACE = '1202781323743076'
 ASANA_BASE = 'https://app.asana.com/api/1.0'
 ASANA_HEADERS = {'Authorization': f'Bearer {ASANA_TOKEN}', 'Content-Type': 'application/json'}
 EMAIL_GID_CACHE = {}
-
 ANTHROPIC_KEY = os.environ.get('ANTHROPIC_KEY', '')
 
 def sc(ws, addr, val):
@@ -48,7 +47,6 @@ def index():
 def health():
     return jsonify({'status': 'ok', 'service': 'AP-WDC Server'})
 
-# ── CLAUDE PROXY ──
 @app.route('/claude', methods=['POST', 'OPTIONS'])
 def claude_proxy():
     if request.method == 'OPTIONS':
@@ -59,23 +57,18 @@ def claude_proxy():
         return res
     try:
         if not ANTHROPIC_KEY:
-            res = jsonify({'error': 'ANTHROPIC_KEY nao configurada no servidor'})
+            res = jsonify({'error': 'ANTHROPIC_KEY nao configurada'})
             res.headers.add('Access-Control-Allow-Origin', '*')
             return res, 500
-
         d = request.get_json(force=True)
         r = req_asana.post(
             'https://api.anthropic.com/v1/messages',
-            json={
-                'model': d.get('model', 'claude-sonnet-4-20250514'),
-                'max_tokens': d.get('max_tokens', 1000),
-                'messages': d.get('messages', [])
-            },
-            headers={
-                'x-api-key': ANTHROPIC_KEY,
-                'anthropic-version': '2023-06-01',
-                'Content-Type': 'application/json'
-            },
+            json={'model': d.get('model', 'claude-sonnet-4-20250514'),
+                  'max_tokens': d.get('max_tokens', 1000),
+                  'messages': d.get('messages', [])},
+            headers={'x-api-key': ANTHROPIC_KEY,
+                     'anthropic-version': '2023-06-01',
+                     'Content-Type': 'application/json'},
             timeout=60
         )
         res = jsonify(r.json())
@@ -92,43 +85,9 @@ def gerar_excel():
         d = request.get_json(force=True)
         h = d.get('header', {})
         p = d.get('perfil', {})
-
         template_bytes = base64.b64decode(TEMPLATE_B64)
         wb = load_workbook(io.BytesIO(template_bytes))
-
         ws = wb['🏠 Perfil']
-        sc(ws, 'B5', h.get('nome'))
-        sc(ws, 'G5', h.get('kam'))
-        sc(ws, 'J5', h.get('inside'))
-        sc(ws, 'B8', h.get('data'))
-        sc(ws, 'E8', h.get('status'))
-        sc(ws, 'B13', p.get('receita'))
-        sc(ws, 'F13', p.get('assin'))
-        sc(ws, 'I13', p.get('cidades'))
-        sc(ws, 'L13', p.get('taxa'))
-        sc(ws, 'B16', p.get('fat'))
-        sc(ws, 'F16', p.get('pos'))
-        sc(ws, 'B19', p.get('perspectiva'))
-        if p.get('rwdc'): sc(ws, 'B36', float(p['rwdc']))
-        if p.get('rpot'): sc(ws, 'C36', float(p['rpot']))
-        sc(ws, 'B41', p.get('sativas'))
-        sc(ws, 'B46', p.get('salvo'))
-        sc(ws, 'B51', p.get('compra'))
-        sc(ws, 'B56', p.get('conc'))
-        sc(ws, 'B61', p.get('obs'))
-
-        ws = wb['👥 Contatos']
-        for i, ct in enumerate(d.get('contatos', [])[:20]):
-            r = 7 + i
-            sc(ws, f'B{r}', ct.get('nome'))
-            sc(ws, f'C{r}', ct.get('cargo'))
-            sc(ws, f'D{r}', ct.get('exec'))
-            sc(ws, f'E{r}', ct.get('c'))
-            sc(ws, f'F{r}', ct.get('a'))
-            sc(ws, f'G{r}', ct.get('inf'))
-            sc(ws, f'H{r}', ct.get('tel'))
-            sc(ws, f'I{r}', ct.get('email'))
-            sc(ws, f'J{r}', ct.get('obs'))
-
-        ws = wb['📁 Projetos']
-        for i, pr in enumerate(d.get('proje
+        sc(ws, 'B5', h.get('nome')); sc(ws, 'G5', h.get('kam')); sc(ws, 'J5', h.get('inside'))
+        sc(ws, 'B8', h.get('data')); sc(ws, 'E8', h.get('status'))
+        sc(ws, 'B13', p.get('receita')); sc(ws, 'F13', p.get('assin')); sc(ws, 'I13', p.get('cidades')); sc(ws, 'L13', p.get('taxa'))
